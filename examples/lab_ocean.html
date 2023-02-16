@@ -69,19 +69,19 @@
 
 		// Sphere
 
-		const geometry = new t3d.SphereGeometry(20, 8, 8);
-		const material = new t3d.PBRMaterial();
-		material.shading = t3d.SHADING_TYPE.FLAT_SHADING;
-		material.envMap = reflectionProbe.renderTexture;
-		material.envMapIntensity = 0.5;
-		material.side = t3d.DRAW_SIDE.DOUBLE; // fix white edge between sphere and water
-		const sphere = new t3d.Mesh(geometry, material);
-		scene.add(sphere);
+		// const geometry = new t3d.SphereGeometry(20, 8, 8);
+		// const material = new t3d.PBRMaterial();
+		// material.shading = t3d.SHADING_TYPE.FLAT_SHADING;
+		// material.envMap = reflectionProbe.renderTexture;
+		// material.envMapIntensity = 0.5;
+		// material.side = t3d.DRAW_SIDE.DOUBLE; // fix white edge between sphere and water
+		// const sphere = new t3d.Mesh(geometry, material);
+		// scene.add(sphere);
 
 		// Water
 
-		const waterGeometry = new t3d.PlaneGeometry(10000, 10000);
-		const waterNormalTexture = new Texture2DLoader().load('./resources/waternormals.jpg');
+		const waterGeometry = new t3d.PlaneGeometry(100, 100);
+		const waterNormalTexture = new Texture2DLoader().load('./resources/waternormals2.jpg');
 		waterNormalTexture.wrapS = t3d.TEXTURE_WRAP.REPEAT;
 		waterNormalTexture.wrapT = t3d.TEXTURE_WRAP.REPEAT;
 
@@ -186,9 +186,9 @@
 
 			let time = performance.now() * 0.001;
 
-			sphere.position.y = Math.sin(time) * 20 + 5;
-			sphere.euler.x = time * 0.5;
-			sphere.euler.z = time * 0.51;
+			// sphere.position.y = Math.sin(time) * 20 + 5;
+			// sphere.euler.x = time * 0.5;
+			// sphere.euler.z = time * 0.51;
 
 			water.material.uniforms['time'] += 1.0 / 60.0;
 

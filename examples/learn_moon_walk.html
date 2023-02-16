@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>t3d - learn</title>
+		<meta
+			name="viewport"
+			content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
+		/>
+		<link type="text/css" rel="stylesheet" href="main.css" />
+	</head>
+
+	<script type="importmap">
+		{
+			"imports": {
+				"t3d": "../build/t3d.module.js"
+			}
+		}
+	</script>
+
+	<body>
+		<script type="module">
+			import * as t3d from "t3d";
+			import { SkyBox } from "./jsm/objects/SkyBox.js";
+			import { Clock } from "./jsm/Clock.js";
+			import { OrbitControls } from "./jsm/controls/OrbitControls.js";
+			import { GLTFLoader } from "./jsm/loaders/glTF/GLTFLoader.js";
+			import { TextureCubeLoader } from "./jsm/loaders/TextureCubeLoader.js";
+			import { Texture2DLoader } from "./jsm/loaders/Texture2DLoader.js";
+
+			let width = window.innerWidth || 2;
+			let height = window.innerHeight || 2;
+
+			const canvas = document.createElement("canvas");
+			canvas.width = width;
+			canvas.height = height;
+			document.body.appendChild(canvas);
+
+			const gl = canvas.getContext("webgl2", {
+				antialias: true,
+				alpha: false,
+			});
+			const renderer = new t3d.Renderer(gl);
+			renderer.renderPass.setClearColor(0.1, 0.1, 0.1, 1);
+			const backRenderTarget = new t3d.RenderTargetBack(canvas);
+
+			const shadowMapPass = new t3d.ShadowMapPass();
+
+			const scene = new t3d.Scene();
+			scene.fog = new t3d.Fog(undefined, 5, 100);
+
+			const camera = new t3d.Camera();
+			camera.position.set(8, 3, 8);
+			camera.lookAt(new t3d.Vector3(0, 0, 0), new t3d.Vector3(0, 1, 0));
+			camera.setPerspective((45 / 180) * Math.PI, width / height, 1, 10000);
+			scene.add(camera);
+
+			const cube_texture = new TextureCubeLoader().load(
+				[
+					"resources/skybox/MilkyWay/dark-s_nx.jpg",
+					"resources/skybox/MilkyWay/dark-s_ny.jpg",
+					"resources/skybox/MilkyWay/dark-s_nz.jpg",
+					"resources/skybox/MilkyWay/dark-s_px.jpg",
+					"resources/skybox/MilkyWay/dark-s_py.jpg",
+					"resources/skybox/MilkyWay/dark-s_pz.jpg"
+				],
+				function () {
+					sceneChange = true;
+				}
+			);
+			const sky_box = new SkyBox(cube_texture);
+			camera.add(sky_box);
+
+			const loadingManager = new t3d.LoadingManager();
+
+			const file =
+				"./resources/models/gltf/UinoSpaceman/glTF-Binary/UinoSpaceman.glb";
+			let animation;
+			let object;
+			const loader = new GLTFLoader(loadingManager);
+			loader
+				.load(file)
+				.then(function (result) {
+					object = result.root;
+					object.traverse(function (node) {
+						if (node.material) {
+							node.castShadow = true;
+							node.receiveShadow = true;
+						}
+					});
+
+					animation = new t3d.AnimationMixer();
+					result.animations.forEach(function (clip) {
+						const action = new t3d.AnimationAction(clip);
+						animation.addAction(action);
+					});
+
+					const actions = animation.getActions();
+
+					let actionIndex = 0;
+
+					actions[actionIndex].time = 0;
+					actions[actionIndex].weight = 1;
+
+					scene.add(object);
+				})
+				.catch((e) => console.error(e));
+
+			const texture = new Texture2DLoader().load("./resources/moon_1024.jpg");
+			texture.anisotropy = renderer.renderPass.capabilities.maxAnisotropy;
+			texture.wrapS = texture.wrapT = t3d.WEBGL_TEXTURE_WRAP.REPEAT;
+			const alphaTexture = new Texture2DLoader().load(
+				"./resources/alphaMap.jpg"
+			);
+			alphaTexture.wrapT = alphaTexture.wrapS =
+				t3d.WEBGL_TEXTURE_WRAP.CLAMP_TO_EDGE;
+			const plane_geometry = new t3d.PlaneGeometry(300, 150);
+			const plane_material = new t3d.LambertMaterial();
+			plane_material.diffuse.setHex(0xffffff);
+			plane_material.diffuseMap = texture;
+			plane_material.alphaMap = alphaTexture;
+			plane_material.transparent = true;
+			const plane = new t3d.Mesh(plane_geometry, plane_material);
+			plane.position.set(0, -1, 0);
+			plane.receiveShadow = true;
+			scene.add(plane);
+
+			const ambientLight = new t3d.AmbientLight(0xffffff, 0.4);
+			scene.add(ambientLight);
+
+			const directionalLight = new t3d.DirectionalLight(0xffffff, 1);
+			directionalLight.position.set(-4, 5, 4);
+			directionalLight.lookAt(new t3d.Vector3(), new t3d.Vector3(0, 1, 0));
+			directionalLight.shadow.windowSize = 10;
+			directionalLight.castShadow = true;
+			scene.add(directionalLight);
+
+			const controller = new OrbitControls(camera, canvas);
+			controller.target.set(0, 1.5, 0);
+
+			const clock = new Clock();
+
+			function loop(count) {
+				requestAnimationFrame(loop);
+
+				controller.update();
+
+				plane_material.diffuseMapTransform.setUvTransform(
+					0,
+					-Math.abs(Math.sin((count / 400000) * Math.PI)),
+					1,
+					1,
+					0,
+					0,
+					0
+				);
+
+				animation && animation.update(clock.getDelta() * 0.15);
+
+				scene.updateMatrix();
+				scene.updateRenderStates(camera);
+				scene.updateRenderQueue(camera);
+
+				shadowMapPass.render(renderer, scene);
+
+				renderer.renderPass.setRenderTarget(backRenderTarget);
+				renderer.renderPass.clear(true, true, true);
+				renderer.renderScene(scene, camera);
+			}
+			requestAnimationFrame(loop);
+
+			function onWindowResize() {
+				width = window.innerWidth || 2;
+				height = window.innerHeight || 2;
+
+				camera.setPerspective((45 / 180) * Math.PI, width / height, 1, 10000);
+
+				backRenderTarget.resize(width, height);
+			}
+			window.addEventListener("resize", onWindowResize, false);
+		</script>
+	</body>
+</html>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>t3d - cameras</title>
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css">
+</head>
+<body>
+    <div id="info">
+        <a href="" target="_blank">t3d</a> - cameras
+    </div>
+
+	<script id="vs" type="x-shader/x-vertex">
+		attribute vec3 a_Position;
+
+		attribute vec2 a_Uv;
+		varying vec4 vPos;
+
+		uniform mat4 u_ProjectionView;
+		uniform mat4 u_Model;
+
+		void main() {
+			gl_Position = u_ProjectionView * u_Model * vec4( a_Position, 1.0 );
+			vPos = vec4(a_Uv.x, a_Uv.y, 1.0, 1.0);
+		}
+    </script>
+
+    <script id="fs" type="x-shader/x-fragment">
+		varying vec4 vPos;
+		
+		void main() {
+			gl_FragColor = vec4(vPos.x, vPos.y, vPos.z, 1.0);
+		}
+    </script>
+
+	<!-- Import maps polyfill -->
+    <!-- Remove this when import maps will be widely supported -->
+    <script async src="./libs/es-module-shims.js"></script>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "t3d": "../build/t3d.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+		import * as t3d from 't3d';
+		import { Texture2DLoader } from './jsm/loaders/Texture2DLoader.js';
+		import { OrbitControls } from "./jsm/controls/OrbitControls.js";
+
+		const width = window.innerWidth || 2;
+		const height = window.innerHeight || 2;
+
+		const canvas = document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		document.body.appendChild(canvas);
+
+		const gl = canvas.getContext("webgl2", {
+			antialias: true,
+			alpha: false
+		});
+		const renderer = new t3d.Renderer(gl);
+		renderer.renderPass.setClearColor(0.1, 0.1, 0.1, 1);
+		const backRenderTarget = new t3d.RenderTargetBack(canvas);
+
+		const scene = new t3d.Scene();
+		const geometry = new t3d.PlaneGeometry(16, 16, 16);
+
+
+		const texture = new Texture2DLoader().load('./resources/UV_Grid_Sm.jpg');
+		texture.wrapS = texture.wrapT = t3d.TEXTURE_WRAP.REPEAT;
+		texture.anisotropy = 16;
+
+		const material = new t3d.BasicMaterial();
+		material.diffuseMap = texture;
+		material.side = t3d.DRAW_SIDE.DOUBLE;
+
+		// const material = new t3d.ShaderMaterial({
+		// 	vertexShader: document.getElementById('vs').textContent,
+		// 	fragmentShader: document.getElementById('fs').textContent
+		// });
+
+		const mesh = new t3d.Mesh(geometry, material);
+		scene.add(mesh);
+
+		const ambientLight = new t3d.AmbientLight(0xffffff);
+		scene.add(ambientLight);
+
+		const directionalLight = new t3d.DirectionalLight(0xffffff);
+		directionalLight.position.set(-5, 5, 5);
+		directionalLight.lookAt(new t3d.Vector3(), new t3d.Vector3(0, 1, 0));
+		scene.add(directionalLight);
+
+		const camera = new t3d.Camera();
+		camera.position.set(0, 10, 30);
+		camera.lookAt(new t3d.Vector3(0, 0, 0), new t3d.Vector3(0, 1, 0));
+		camera.setPerspective(45 / 180 * Math.PI, width / height, 1, 1000);
+		scene.add(camera);
+
+		const controller = new OrbitControls(camera, canvas);
+		controller.autoRotate = false;
+
+		function loop(count) {
+			requestAnimationFrame(loop);
+
+			controller.update();
+
+			// mesh.euler.y = count / 1000 * .5; // rotate cube
+
+			scene.updateMatrix();
+			scene.updateRenderStates(camera);
+			scene.updateRenderQueue(camera);
+
+			renderer.renderPass.setRenderTarget(backRenderTarget);
+			renderer.renderPass.clear(true, true, false);
+			renderer.renderScene(scene, camera);
+		}
+		requestAnimationFrame(loop);
+		// window.addEventListener("resize", onWindowResize, false);
+	</script>
+</body>
+</html>

@@ -61,12 +61,12 @@
 		let model;
 
 		console.time('Load glTF');
-		const gltfUri = './resources/models/gltf/bust_of_woman/glTF-Binary/bust_of_woman.glb';
+		const gltfUri = './resources/models/gltf/NavMeshLevel/level.glb';
 		new GLTFLoader(loadingManager).load(gltfUri).then(function(result) {
 			console.timeEnd('Load glTF');
 
 			model = result.root;
-
+			model.scale = new t3d.Vector3(10, 10, 10);
 			model.traverse(node => {
 				if (node.isMesh) {
 					node.castShadow = true;
@@ -91,20 +91,20 @@
 		sphere.receiveShadow = true;
 		scene.add(sphere);
 
-		const box_geometry = new t3d.BoxGeometry(20, 40, 20);
+		const box_geometry = new t3d.BoxGeometry(20, 20, 20);
 		const box_material = new t3d.PBRMaterial();
 		box_material.diffuse.setHex(0xBBBBBB);
 		box_material.metalness = 0;
 		box_material.roughness = 1;
 		box_material.side = t3d.DRAW_SIDE.DOUBLE;
 		const box = new t3d.Mesh(box_geometry, box_material);
-		box.position.set(50, 20, -10);
+		box.position.set(20, 10, 20);
 		box.shadowType = t3d.SHADOW_TYPE.PCF5_SOFT;
 		box.castShadow = true;
 		box.receiveShadow = true;
 		scene.add(box);
 
-		const plane_geometry = new t3d.PlaneGeometry(2000, 2000);
+		const plane_geometry = new t3d.PlaneGeometry(100, 100);
 		const plane_material = new t3d.LambertMaterial();
 		plane_material.diffuse.setHex(0x999999);
 		plane_material.dithering = true;

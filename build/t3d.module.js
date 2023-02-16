@@ -661,6 +661,28 @@ class Vector3 {
 		return new Vector3(this.x, this.y, this.z);
 	}
 
+	fromBufferAttribute( attribute, index ) {
+
+		this.x = attribute.getX( index );
+		this.y = attribute.getY( index );
+		this.z = attribute.getZ( index );
+
+		return this;
+
+	}
+
+	divideScalar( scalar ) {
+
+		return this.multiplyScalar( 1 / scalar );
+
+	}
+
+	lengthSq() {
+
+		return this.x * this.x + this.y * this.y + this.z * this.z;
+
+	}
+
 }
 
 const _vector$2 = new Vector3();
@@ -4774,6 +4796,10 @@ class Matrix3 {
 const _vec3_1$3 = new Vector3();
 const _mat4_1$3 = new Matrix3();
 
+const _vector1 = /*@__PURE__*/ new Vector3();
+const _vector2 = /*@__PURE__*/ new Vector3();
+const _normalMatrix = /*@__PURE__*/ new Matrix3();
+
 /**
  * A two dimensional surface that extends infinitely in 3d space,
  * represented in Hessian normal form by a unit length normal vector and a constant.
@@ -4895,6 +4921,24 @@ class Plane {
 		this.constant = -referencePoint.dot(normal);
 
 		return this;
+	}
+
+	setFromCoplanarPoints( a, b, c ) {
+
+		const normal = _vector1.subVectors( c, b ).cross( _vector2.subVectors( a, b ) ).normalize();
+
+		// Q: should an error be thrown if normal is zero (e.g. degenerate plane)?
+
+		this.setFromNormalAndCoplanarPoint( normal, a );
+
+		return this;
+
+	}
+
+	projectPoint( point, target ) {
+
+		return target.copy( this.normal ).multiplyScalar( - this.distanceToPoint( point ) ).add( point );
+
 	}
 
 }
@@ -5571,6 +5615,13 @@ const _v1 = new Vector3();
 const _v2 = new Vector3();
 const _v3 = new Vector3();
 
+const _vab = new Vector3();
+const _vac = new Vector3();
+const _vbc = new Vector3();
+const _vap = new Vector3();
+const _vbp = new Vector3();
+const _vcp = new Vector3();
+
 /**
  * A geometric triangle as defined by three Vector3s representing its three corners.
  * @memberof t3d
@@ -5677,6 +5728,87 @@ class Triangle {
 		this.c.copy(c);
 
 		return this;
+	}
+
+	closestPointToPoint( p, target ) {
+
+		const a = this.a, b = this.b, c = this.c;
+		let v, w;
+
+		// algorithm thanks to Real-Time Collision Detection by Christer Ericson,
+		// published by Morgan Kaufmann Publishers, (c) 2005 Elsevier Inc.,
+		// under the accompanying license; see chapter 5.1.5 for detailed explanation.
+		// basically, we're distinguishing which of the voronoi regions of the triangle
+		// the point lies in with the minimum amount of redundant computation.
+
+		_vab.subVectors( b, a );
+		_vac.subVectors( c, a );
+		_vap.subVectors( p, a );
+		const d1 = _vab.dot( _vap );
+		const d2 = _vac.dot( _vap );
+		if ( d1 <= 0 && d2 <= 0 ) {
+
+			// vertex region of A; barycentric coords (1, 0, 0)
+			return target.copy( a );
+
+		}
+
+		_vbp.subVectors( p, b );
+		const d3 = _vab.dot( _vbp );
+		const d4 = _vac.dot( _vbp );
+		if ( d3 >= 0 && d4 <= d3 ) {
+
+			// vertex region of B; barycentric coords (0, 1, 0)
+			return target.copy( b );
+
+		}
+
+		const vc = d1 * d4 - d3 * d2;
+		if ( vc <= 0 && d1 >= 0 && d3 <= 0 ) {
+
+			v = d1 / ( d1 - d3 );
+			// edge region of AB; barycentric coords (1-v, v, 0)
+			return target.copy( a ).addScaledVector( _vab, v );
+
+		}
+
+		_vcp.subVectors( p, c );
+		const d5 = _vab.dot( _vcp );
+		const d6 = _vac.dot( _vcp );
+		if ( d6 >= 0 && d5 <= d6 ) {
+
+			// vertex region of C; barycentric coords (0, 0, 1)
+			return target.copy( c );
+
+		}
+
+		const vb = d5 * d2 - d1 * d6;
+		if ( vb <= 0 && d2 >= 0 && d6 <= 0 ) {
+
+			w = d2 / ( d2 - d6 );
+			// edge region of AC; barycentric coords (1-w, 0, w)
+			return target.copy( a ).addScaledVector( _vac, w );
+
+		}
+
+		const va = d3 * d6 - d5 * d4;
+		if ( va <= 0 && ( d4 - d3 ) >= 0 && ( d5 - d6 ) >= 0 ) {
+
+			_vbc.subVectors( c, b );
+			w = ( d4 - d3 ) / ( ( d4 - d3 ) + ( d5 - d6 ) );
+			// edge region of BC; barycentric coords (0, 1-w, w)
+			return target.copy( b ).addScaledVector( _vbc, w ); // edge region of BC
+
+		}
+
+		// face region
+		const denom = 1 / ( va + vb + vc );
+		// u = va * denom
+		v = vb * denom;
+		w = vc * denom;
+
+		return target.copy( a ).addScaledVector( _vab, v ).addScaledVector( _vac, w );
+
 	}
 
 }
@@ -8049,6 +8181,43 @@ class Attribute {
 		return attribute;
 	}
 
+	getX(index) {
+		let x = this.buffer.array[index * this.size];
+		if(this.normalized){
+			x = denormalize(x, this.array);
+		}
+		return x;
+	}
+
+	getY(index) {
+		let y = this.buffer.array[index * this.size + 1];
+		if(this.normalized){
+			y = denormalize(x, this.array);
+		}
+		return y;
+	}
+
+	getZ(index) {
+		let y = this.buffer.array[index * this.size + 2];
+		if(this.normalized){
+			y = denormalize(x, this.array);
+		}
+		return y;
+	}
+
+	setXYZ(index, x, y, z) {
+		index *= this.size;
+		if(this.normalized){
+			x = normalize(x, this.array);
+			y = normalize(y, this.array);
+			z = normalize(z, this.array);
+		}
+		this.buffer.array[index + 0] = x;
+		this.buffer.array[index + 1] = y;
+		this.buffer.array[index + 2] = z;
+		return this;
+	}
+
 }
 
 /**
@@ -8131,6 +8300,61 @@ class Buffer {
 		const ib = new Buffer(array, this.stride);
 		ib.usage = this.usage;
 		return ib;
+	}
+
+	getX(index) {
+		let x = this.array[index * this.stride];
+		if(this.normalized){
+			x = denormalize(x, this.array);
+		}
+		return x;
+	}
+
+	getY(index) {
+		let y = this.array[index * this.stride + 1];
+		if(this.normalized){
+			y = denormalize(x, this.array);
+		}
+		return y;
+	}
+
+	getZ(index) {
+		let y = this.array[index * this.stride + 2];
+		if(this.normalized){
+			y = denormalize(x, this.array);
+		}
+		return y;
+	}
+}
+
+function denormalize( value, array ) {
+
+	switch ( array.constructor ) {
+
+		case Float32Array:
+
+			return value;
+
+		case Uint16Array:
+
+			return value / 65535.0;
+
+		case Uint8Array:
+
+			return value / 255.0;
+
+		case Int16Array:
+
+			return Math.max( value / 32767.0, - 1.0 );
+
+		case Int8Array:
+
+			return Math.max( value / 127.0, - 1.0 );
+
+		default:
+
+			throw new Error( 'Invalid component type.' );
+
 	}
 
 }
