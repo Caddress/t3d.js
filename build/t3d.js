@@ -6499,6 +6499,7 @@
 	var tempDirectionalShadowMatrices = [];
 	var tempPointShadowMatrices = [];
 	var tempSpotShadowMatrices = [];
+	var _lightDataId = 0;
 
 	/**
 	 * The LightData class is used to collect lights,
@@ -6507,6 +6508,9 @@
 	 */
 	var LightData = /*#__PURE__*/function () {
 		function LightData() {
+			this.id = _lightDataId++;
+			this.version = 0;
+
 			// Light collection array
 
 			this.lights = [];
@@ -6563,6 +6567,7 @@
 			this.lights.sort(shadowCastingLightsFirst);
 			this._setupCache(sceneData);
 			this.hash.update(this);
+			this.version++;
 		};
 		_proto._setupCache = function _setupCache(sceneData) {
 			for (var i = 0; i < 3; i++) {
@@ -7128,6 +7133,7 @@
 	}
 
 	var _plane_1 = new Plane();
+	var _sceneDataId = 0;
 
 	/**
 	 * SceneData collect all render states about scene, Including lights.
@@ -7135,6 +7141,8 @@
 	 */
 	var SceneData = /*#__PURE__*/function () {
 		function SceneData() {
+			this.id = _sceneDataId++;
+			this.version = 0;
 			this.useAnchorMatrix = false;
 			this.anchorMatrix = new Matrix4();
 			this.anchorMatrixInverse = new Matrix4();
@@ -7166,6 +7174,7 @@
 			}
 			this.setClippingPlanesData(scene.clippingPlanes, this.clippingPlanesData);
 			this.numClippingPlanes = scene.clippingPlanes.length;
+			this.version++;
 		};
 		_proto.setClippingPlanesData = function setClippingPlanesData(clippingPlanes, clippingPlanesData) {
 			for (var i = 0; i < clippingPlanes.length; i++) {
@@ -7186,6 +7195,7 @@
 	function _isPerspectiveMatrix(m) {
 		return m.elements[11] === -1.0;
 	}
+	var _cameraDataId = 0;
 
 	/**
 	 * RenderStates collect all render states about scene and camera.
@@ -7196,16 +7206,18 @@
 			this.scene = sceneData;
 			this.lights = lightsData;
 			this.camera = {
+				id: _cameraDataId++,
+				version: 0,
 				near: 0,
 				far: 0,
 				position: new Vector3(),
+				logDepthCameraNear: 0,
+				logDepthBufFC: 0,
 				viewMatrix: new Matrix4(),
 				projectionMatrix: new Matrix4(),
 				projectionViewMatrix: new Matrix4(),
 				rect: new Vector4(0, 0, 1, 1)
 			};
-			this.logDepthCameraNear = 0;
-			this.logDepthBufFC = 0;
 			this.gammaFactor = 2.0;
 			this.outputEncoding = TEXEL_ENCODING_TYPE.LINEAR;
 		}
@@ -7217,6 +7229,7 @@
 		var _proto = RenderStates.prototype;
 		_proto.updateCamera = function updateCamera(camera) {
 			var sceneData = this.scene;
+			var cameraData = this.camera;
 			var projectionMatrix = camera.projectionMatrix;
 			var cameraNear = 0,
 				cameraFar = 0;
@@ -7227,26 +7240,27 @@
 				cameraNear = (projectionMatrix.elements[14] + 1) / projectionMatrix.elements[10];
 				cameraFar = (projectionMatrix.elements[14] - 1) / projectionMatrix.elements[10];
 			}
-			this.camera.near = cameraNear;
-			this.camera.far = cameraFar;
+			cameraData.near = cameraNear;
+			cameraData.far = cameraFar;
 			if (sceneData.logarithmicDepthBuffer) {
-				this.logDepthCameraNear = cameraNear;
-				this.logDepthBufFC = 2.0 / (Math.log(cameraFar - cameraNear + 1.0) * Math.LOG2E);
+				cameraData.logDepthCameraNear = cameraNear;
+				cameraData.logDepthBufFC = 2.0 / (Math.log(cameraFar - cameraNear + 1.0) * Math.LOG2E);
 			} else {
-				this.logDepthCameraNear = 0;
-				this.logDepthBufFC = 0;
+				cameraData.logDepthCameraNear = 0;
+				cameraData.logDepthBufFC = 0;
 			}
-			this.camera.position.setFromMatrixPosition(camera.worldMatrix);
+			cameraData.position.setFromMatrixPosition(camera.worldMatrix);
 			if (sceneData.useAnchorMatrix) {
-				this.camera.position.applyMatrix4(sceneData.anchorMatrixInverse);
+				cameraData.position.applyMatrix4(sceneData.anchorMatrixInverse);
 			}
-			this.camera.viewMatrix.copy(camera.viewMatrix);
+			cameraData.viewMatrix.copy(camera.viewMatrix);
 			if (sceneData.useAnchorMatrix) {
-				this.camera.viewMatrix.multiply(sceneData.anchorMatrix);
+				cameraData.viewMatrix.multiply(sceneData.anchorMatrix);
 			}
-			this.camera.projectionMatrix.copy(projectionMatrix);
-			this.camera.projectionViewMatrix.copy(projectionMatrix).multiply(this.camera.viewMatrix);
-			this.camera.rect.copy(camera.rect);
+			cameraData.projectionMatrix.copy(projectionMatrix);
+			cameraData.projectionViewMatrix.copy(projectionMatrix).multiply(cameraData.viewMatrix);
+			cameraData.rect.copy(camera.rect);
+			cameraData.version++;
 			this.gammaFactor = camera.gammaFactor;
 			this.outputEncoding = camera.outputEncoding;
 		};
@@ -9773,6 +9787,140 @@
 	 */
 	Texture3D.prototype.isTexture3D = true;
 
+	// Build-in uniforms
+
+	var internalUniforms = {
+		'u_Model': [1, null],
+		'u_Projection': [2, function (cameraData) {
+			return this.set(cameraData.projectionMatrix.elements);
+		}],
+		'u_View': [2, function (cameraData) {
+			return this.set(cameraData.viewMatrix.elements);
+		}],
+		'u_ProjectionView': [2, function (cameraData) {
+			return this.set(cameraData.projectionViewMatrix.elements);
+		}],
+		'u_CameraPosition': [2, function (cameraData) {
+			return this.setValue(cameraData.position.x, cameraData.position.y, cameraData.position.z);
+		}],
+		'logDepthBufFC': [2, function (cameraData) {
+			return this.set(cameraData.logDepthBufFC);
+		}],
+		'logDepthCameraNear': [2, function (cameraData) {
+			return this.set(cameraData.logDepthCameraNear);
+		}],
+		'u_EnvMapLight_Intensity': [3, function (sceneData) {
+			return this.set(sceneData.environmentLightIntensity);
+		}],
+		'u_FogColor': [3, function (sceneData) {
+			var color = sceneData.fog.color;
+			return this.setValue(color.r, color.g, color.b);
+		}],
+		'u_FogDensity': [3, function (sceneData) {
+			return this.set(sceneData.fog.density);
+		}],
+		'u_FogNear': [3, function (sceneData) {
+			return this.set(sceneData.fog.near);
+		}],
+		'u_FogFar': [3, function (sceneData) {
+			return this.set(sceneData.fog.far);
+		}],
+		'u_Color': [4, function (material, textures) {
+			var color = material.diffuse;
+			return this.setValue(color.r, color.g, color.b);
+		}],
+		'u_Opacity': [4, function (material, textures) {
+			return this.set(material.opacity);
+		}],
+		'diffuseMap': [4, function (material, textures) {
+			return this.set(material.diffuseMap, textures);
+		}],
+		'alphaMap': [4, function (material, textures) {
+			return this.set(material.alphaMap, textures);
+		}],
+		'alphaMapUVTransform': [4, function (material, textures) {
+			return this.set(material.alphaMapTransform.elements);
+		}],
+		'normalMap': [4, function (material, textures) {
+			return this.set(material.normalMap, textures);
+		}],
+		'normalScale': [4, function (material, textures) {
+			return this.setValue(material.normalScale.x, material.normalScale.y);
+		}],
+		'bumpMap': [4, function (material, textures) {
+			return this.set(material.bumpMap, textures);
+		}],
+		'bumpScale': [4, function (material, textures) {
+			return this.set(material.bumpScale);
+		}],
+		'cubeMap': [4, function (material, textures) {
+			return this.set(material.cubeMap, textures);
+		}],
+		'u_EnvMap_Intensity': [4, function (material, textures) {
+			return this.set(material.envMapIntensity);
+		}],
+		'u_Specular': [4, function (material, textures) {
+			return this.set(material.shininess);
+		}],
+		'u_SpecularColor': [4, function (material, textures) {
+			var color = material.specular;
+			return this.setValue(color.r, color.g, color.b);
+		}],
+		'specularMap': [4, function (material, textures) {
+			return this.set(material.specularMap, textures);
+		}],
+		'aoMap': [4, function (material, textures) {
+			return this.set(material.aoMap, textures);
+		}],
+		'aoMapIntensity': [4, function (material, textures) {
+			return this.set(material.aoMapIntensity);
+		}],
+		'aoMapUVTransform': [4, function (material, textures) {
+			return this.set(material.aoMapTransform.elements);
+		}],
+		'u_Roughness': [4, function (material, textures) {
+			return this.set(material.roughness);
+		}],
+		'roughnessMap': [4, function (material, textures) {
+			return this.set(material.roughnessMap, textures);
+		}],
+		'u_Metalness': [4, function (material, textures) {
+			return this.set(material.metalness);
+		}],
+		'metalnessMap': [4, function (material, textures) {
+			return this.set(material.metalnessMap, textures);
+		}],
+		'glossiness': [4, function (material, textures) {
+			return this.set(material.glossiness);
+		}],
+		'glossinessMap': [4, function (material, textures) {
+			return this.set(material.glossinessMap, textures);
+		}],
+		'emissive': [4, function (material, textures) {
+			var color = material.emissive;
+			return this.setValue(color.r, color.g, color.b);
+		}],
+		'emissiveMap': [4, function (material, textures) {
+			return this.set(material.emissiveMap, textures);
+		}],
+		'emissiveMapUVTransform': [4, function (material, textures) {
+			return this.set(material.emissiveMapTransform.elements);
+		}],
+		'matcap': [4, function (material, textures) {
+			return this.set(material.matcap, textures);
+		}],
+		'uvTransform': [4, function (material, textures) {
+			return this.set(material.diffuseMapTransform.elements);
+		}],
+		'u_PointSize': [4, function (material, textures) {
+			return this.set(material.size);
+		}],
+		'u_PointScale': [5, null],
+		'maxMipLevel': [5, null],
+		'envMap': [5, null],
+		'u_EnvMap_Flip': [5, null]
+	};
+
 	// Empty textures
 
 	var emptyTexture = new Texture2D();
@@ -10121,6 +10269,16 @@
 		this.set = undefined;
 		this.cache = [];
 		generateSetter(this);
+
+		// internal
+
+		this.internalGroup = 0;
+		this.internalFun = null;
+		var internal = internalUniforms[id];
+		if (internal) {
+			this.internalGroup = internal[0];
+			this.internalFun = internal[1];
+		}
 	};
 	var PureArrayUniform = function PureArrayUniform(gl, id, activeInfo, location) {
 		this.gl = gl;
@@ -10288,32 +10446,53 @@
 
 	var programIdCount = 0;
 	var WebGLProgram = function WebGLProgram(gl, vshader, fshader) {
-		// create shaders
+		this.gl = gl;
+		this.vshaderSource = vshader;
+		this.fshaderSource = fshader;
+		this.id = programIdCount++;
+		this.usedTimes = 1;
+		this.code = "";
+		this.lightId = -1;
+		this.lightVersion = -1;
+		this.cameraId = -1;
+		this.cameraVersion = -1;
+		this.sceneId = -1;
+		this.sceneVersion = -1;
+		this.program;
 
-		var vertexShader = loadShader(gl, gl.VERTEX_SHADER, vshader);
-		var fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fshader);
+		// compile program
 
-		// create a program object
+		var program;
+		this.compile = function (checkErrors) {
+			// create shaders
 
-		var program = gl.createProgram();
-		gl.attachShader(program, vertexShader);
-		gl.attachShader(program, fragmentShader);
-		gl.linkProgram(program);
+			var vertexShader = loadShader(gl, gl.VERTEX_SHADER, vshader);
+			var fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fshader);
 
-		// check errors
+			// create a program object
 
-		if (gl.getProgramParameter(program, gl.LINK_STATUS) === false) {
-			var programLog = gl.getProgramInfoLog(program).trim();
-			var vertexErrors = getShaderErrors(gl, vertexShader, 'VERTEX');
-			var fragmentErrors = getShaderErrors(gl, fragmentShader, 'FRAGMENT');
-			console.error('THREE.WebGLProgram: Shader Error ' + gl.getError() + ' - ' + 'VALIDATE_STATUS ' + gl.getProgramParameter(program, gl.VALIDATE_STATUS) + '\n\n' + 'Program Info Log: ' + programLog + '\n' + vertexErrors + '\n' + fragmentErrors);
-		}
+			program = gl.createProgram();
+			gl.attachShader(program, vertexShader);
+			gl.attachShader(program, fragmentShader);
+			gl.linkProgram(program);
 
-		// here we can delete shaders,
-		// according to the documentation: https://www.opengl.org/sdk/docs/man/html/glLinkProgram.xhtml
+			// check errors
 
-		gl.deleteShader(vertexShader);
-		gl.deleteShader(fragmentShader);
+			if (checkErrors && gl.getProgramParameter(program, gl.LINK_STATUS) === false) {
+				var programLog = gl.getProgramInfoLog(program).trim();
+				var vertexErrors = getShaderErrors(gl, vertexShader, 'VERTEX');
+				var fragmentErrors = getShaderErrors(gl, fragmentShader, 'FRAGMENT');
+				console.error('Shader Error ' + gl.getError() + ' - ' + 'VALIDATE_STATUS ' + gl.getProgramParameter(program, gl.VALIDATE_STATUS) + '\n\n' + 'Program Info Log: ' + programLog + '\n' + vertexErrors + '\n' + fragmentErrors);
+			} else {
+				this.program = program;
+			}
+
+			// here we can delete shaders,
+			// according to the documentation: https://www.opengl.org/sdk/docs/man/html/glLinkProgram.xhtml
+
+			gl.deleteShader(vertexShader);
+			gl.deleteShader(fragmentShader);
+		};
 
 		// set up caching for uniforms
 
@@ -10341,16 +10520,6 @@
 			gl.deleteProgram(program);
 			this.program = undefined;
 		};
-
-		//
-
-		this.id = programIdCount++;
-		this.usedTimes = 1;
-		this.code = "";
-		this.gl = gl;
-		this.vshaderSource = vshader;
-		this.fshaderSource = fshader;
-		this.program = program;
 	};
 	function handleSource(string, errorLine) {
 		var lines = string.split('\n');
@@ -10690,7 +10859,7 @@
 			this._programs = [];
 		}
 		var _proto = WebGLPrograms.prototype;
-		_proto.getProgram = function getProgram(material, object, renderStates) {
+		_proto.getProgram = function getProgram(material, object, renderStates, checkErrors) {
 			var programs = this._programs;
 			var props = generateProps(this._state, this._capabilities, material, object, renderStates);
 			var code = generateProgramCode(props, material);
@@ -10708,6 +10877,7 @@
 				var vertexShader = ShaderLib[material.type + "_vert"] || material.vertexShader || ShaderLib.basic_vert;
 				var fragmentShader = ShaderLib[material.type + "_frag"] || material.fragmentShader || ShaderLib.basic_frag;
 				program = createProgram(this._gl, customDefines, props, vertexShader, fragmentShader);
+				program.compile(checkErrors);
 				program.code = code;
 				programs.push(program);
 			}
@@ -13133,7 +13303,7 @@
 					material.addEventListener('dispose', onMaterialDispose, this);
 				}
 				var oldProgram = materialProperties.program;
-				materialProperties.program = this._programs.getProgram(material, object, renderStates);
+				materialProperties.program = this._programs.getProgram(material, object, renderStates, true);
 				if (oldProgram) {
 					this._programs.releaseProgram(oldProgram); // release after new program is created.
 				}
@@ -13152,6 +13322,7 @@
 				material.needsUpdate = false;
 			}
 			var program = materialProperties.program;
+			if (program.program === undefined) return;
 			state.setProgram(program);
 			this._geometries.setGeometry(geometry);
 
@@ -13160,15 +13331,29 @@
 				this._updateMorphtargets(object, geometry, program);
 			}
 			vertexArrayBindings.setup(object, geometry, program);
-
-			// update uniforms
+			var refreshLights = false;
+			if (program.lightId !== lightData.id || program.lightVersion !== lightData.version) {
+				refreshLights = true;
+				program.lightId = lightData.id;
+				program.lightVersion = lightData.version;
+			}
+			var refreshCamera = false;
+			if (program.cameraId !== cameraData.id || program.cameraVersion !== cameraData.version) {
+				refreshCamera = true;
+				program.cameraId = cameraData.id;
+				program.cameraVersion = cameraData.version;
+			}
+			var refreshScene = false;
+			if (program.sceneId !== sceneData.id || program.sceneVersion !== sceneData.version) {
+				refreshScene = true;
+				program.sceneId = sceneData.id;
+				program.sceneVersion = sceneData.version;
+			}
 			var uniforms = program.getUniforms();
 
 			// upload light uniforms
-			// shadow map need upload first ?
-			// or it will cause bug
 			if (material.acceptLight) {
-				this._uploadLights(uniforms, lightData, sceneData.disableShadowSampler);
+				this._uploadLights(uniforms, lightData, sceneData.disableShadowSampler, refreshLights);
 			}
 
 			// upload bone matrices
@@ -13180,173 +13365,63 @@
 			for (var n = 0, ll = uniforms.seq.length; n < ll; n++) {
 				var uniform = uniforms.seq[n];
 				var key = uniform.id;
+				var internalGroup = uniform.internalGroup;
 
 				// upload custom uniforms
 				if (material.uniforms && material.uniforms[key] !== undefined) {
 					uniform.set(material.uniforms[key], textures);
 					continue;
 				}
-				var modelMatrix = void 0,
-					color = void 0,
-					scale = void 0;
-				switch (key) {
-					// pvm matrix
-					case "u_Projection":
-						uniform.set(cameraData.projectionMatrix.elements);
-						break;
-					case "u_View":
-						uniform.set(cameraData.viewMatrix.elements);
-						break;
-					case "u_Model":
-						modelMatrix = object.worldMatrix;
-						if (sceneData.useAnchorMatrix) {
-							modelMatrix = helpMatrix4.copy(modelMatrix).premultiply(sceneData.anchorMatrixInverse);
-						}
-						uniform.set(modelMatrix.elements);
-						break;
-					case "u_ProjectionView":
-						uniform.set(cameraData.projectionViewMatrix.elements);
-						break;
-					case "u_CameraPosition":
-						uniform.setValue(cameraData.position.x, cameraData.position.y, cameraData.position.z);
-						break;
-					case "u_Color":
-						color = material.diffuse;
-						uniform.setValue(color.r, color.g, color.b);
-						break;
-					case "u_Opacity":
-						uniform.set(material.opacity);
-						break;
-					case "diffuseMap":
-						uniform.set(material.diffuseMap, textures);
-						break;
-					case "alphaMap":
-						uniform.set(material.alphaMap, textures);
-						break;
-					case "alphaMapUVTransform":
-						uniform.set(material.alphaMapTransform.elements);
-						break;
-					case "normalMap":
-						uniform.set(material.normalMap, textures);
-						break;
-					case "normalScale":
-						uniform.setValue(material.normalScale.x, material.normalScale.y);
-						break;
-					case "bumpMap":
-						uniform.set(material.bumpMap, textures);
-						break;
-					case "bumpScale":
-						uniform.set(material.bumpScale);
-						break;
-					case "envMap":
-						uniform.set(envMap, textures);
-						break;
-					case "cubeMap":
-						uniform.set(material.cubeMap, textures);
-						break;
-					case "u_EnvMap_Flip":
-						uniform.set(envMap.images[0] && envMap.images[0].rtt ? 1 : -1);
-						break;
-					case "u_EnvMap_Intensity":
-						uniform.set(material.envMapIntensity);
-						break;
-					case "u_EnvMapLight_Intensity":
-						uniform.set(sceneData.environmentLightIntensity);
-						break;
-					case "maxMipLevel":
-						uniform.set(this._properties.get(envMap).__maxMipLevel || 8); // TODO replace 8 with real mip level
-						break;
-					case "u_Specular":
-						uniform.set(material.shininess);
-						break;
-					case "u_SpecularColor":
-						color = material.specular;
-						uniform.setValue(color.r, color.g, color.b);
-						break;
-					case "specularMap":
-						uniform.set(material.specularMap, textures);
-						break;
-					case "aoMap":
-						uniform.set(material.aoMap, textures);
-						break;
-					case "aoMapIntensity":
-						uniform.set(material.aoMapIntensity);
-						break;
-					case "aoMapUVTransform":
-						uniform.set(material.aoMapTransform.elements);
-						break;
-					case "u_Roughness":
-						uniform.set(material.roughness);
-						break;
-					case "roughnessMap":
-						uniform.set(material.roughnessMap, textures);
-						break;
-					case "u_Metalness":
-						uniform.set(material.metalness);
-						break;
-					case "metalnessMap":
-						uniform.set(material.metalnessMap, textures);
-						break;
-					case "glossiness":
-						uniform.set(material.glossiness);
-						break;
-					case "glossinessMap":
-						uniform.set(material.glossinessMap, textures);
-						break;
-					case "emissive":
-						color = material.emissive;
-						uniform.setValue(color.r, color.g, color.b);
-						break;
-					case "emissiveMap":
-						uniform.set(material.emissiveMap, textures);
-						break;
-					case "emissiveMapUVTransform":
-						uniform.set(material.emissiveMapTransform.elements);
-						break;
-					case "u_FogColor":
-						color = sceneData.fog.color;
-						uniform.setValue(color.r, color.g, color.b);
-						break;
-					case "u_FogDensity":
-						uniform.set(sceneData.fog.density);
-						break;
-					case "u_FogNear":
-						uniform.set(sceneData.fog.near);
-						break;
-					case "u_FogFar":
-						uniform.set(sceneData.fog.far);
-						break;
-					case "logDepthBufFC":
-						uniform.set(renderStates.logDepthBufFC);
-						break;
-					case "logDepthCameraNear":
-						uniform.set(renderStates.logDepthCameraNear);
-						break;
-					case "u_PointSize":
-						uniform.set(material.size);
-						break;
-					case "u_PointScale":
-						scale = currentRenderTarget.height * 0.5; // three.js do this
-						uniform.set(scale);
-						break;
-					case "dashSize":
-						uniform.set(material.dashSize);
-						break;
-					case "totalSize":
-						uniform.set(material.dashSize + material.gapSize);
-						break;
-					case "scale":
-						uniform.set(material.scale);
-						break;
-					case "matcap":
-						uniform.set(material.matcap, textures);
-						break;
-					case "clippingPlanes":
-						uniform.set(clippingPlanesData);
-						break;
-					case "uvTransform":
-						uniform.set(material.diffuseMapTransform.elements);
-						break;
+
+				// u_Model: always upload this matrix
+				if (internalGroup === 1) {
+					var modelMatrix = object.worldMatrix;
+					if (sceneData.useAnchorMatrix) {
+						modelMatrix = helpMatrix4.copy(modelMatrix).premultiply(sceneData.anchorMatrixInverse);
+					}
+					uniform.set(modelMatrix.elements);
+					continue;
+				}
+
+				// uniforms about camera data
+				if (internalGroup === 2 && refreshCamera) {
+					uniform.internalFun(cameraData);
+					continue;
+				}
+
+				// uniforms about scene data
+				if (internalGroup === 3 && refreshScene) {
+					uniform.internalFun(sceneData);
+					continue;
+				}
+
+				// uniforms about material
+				if (internalGroup === 4) {
+					uniform.internalFun(material, textures);
+					continue;
+				}
+
+				// other internal uniforms
+				if (internalGroup === 5) {
+					switch (key) {
+						case "envMap":
+							uniform.set(envMap, textures);
+							break;
+						case "u_EnvMap_Flip":
+							uniform.set(envMap.images[0] && envMap.images[0].rtt ? 1 : -1);
+							break;
+						case "maxMipLevel":
+							uniform.set(this._properties.get(envMap).__maxMipLevel || 8); // TODO replace 8 with real mip level
+							break;
+						case "u_PointScale":
+							var scale = currentRenderTarget.height * 0.5; // three.js do this
+							uniform.set(scale);
+							break;
+					}
+					continue;
+				}
+				if (key === 'clippingPlanes') {
+					uniform.set(clippingPlanesData);
 				}
 			}
 			var frontFaceCW = object.worldMatrix.determinant() < 0;
@@ -13370,18 +13445,18 @@
 			afterRender(renderable);
 			object.onAfterRender(renderable);
 		};
-		_proto._uploadLights = function _uploadLights(uniforms, lights, disableShadowSampler) {
+		_proto._uploadLights = function _uploadLights(uniforms, lights, disableShadowSampler, refresh) {
 			var textures = this._textures;
-			if (lights.useAmbient) {
+			if (lights.useAmbient && refresh) {
 				uniforms.set("u_AmbientLightColor", lights.ambient);
 			}
-			if (lights.hemisNum > 0) {
+			if (lights.hemisNum > 0 && refresh) {
 				uniforms.set("u_Hemi", lights.hemisphere);
 			}
 			if (lights.directsNum > 0) {
-				uniforms.set("u_Directional", lights.directional);
+				if (refresh) uniforms.set("u_Directional", lights.directional);
 				if (lights.directShadowNum > 0) {
-					uniforms.set("u_DirectionalShadow", lights.directionalShadow);
+					if (refresh) uniforms.set("u_DirectionalShadow", lights.directionalShadow);
 					if (uniforms.has("directionalShadowMap")) {
 						if (this.capabilities.version >= 2 && !disableShadowSampler) {
 							uniforms.set("directionalShadowMap", lights.directionalShadowDepthMap, textures);
@@ -13396,9 +13471,9 @@
 				}
 			}
 			if (lights.pointsNum > 0) {
-				uniforms.set("u_Point", lights.point);
+				if (refresh) uniforms.set("u_Point", lights.point);
 				if (lights.pointShadowNum > 0) {
-					uniforms.set("u_PointShadow", lights.pointShadow);
+					if (refresh) uniforms.set("u_PointShadow", lights.pointShadow);
 					if (uniforms.has("pointShadowMap")) {
 						uniforms.set("pointShadowMap", lights.pointShadowMap, textures);
 						uniforms.set("pointShadowMatrix", lights.pointShadowMatrix);
@@ -13406,9 +13481,9 @@
 				}
 			}
 			if (lights.spotsNum > 0) {
-				uniforms.set("u_Spot", lights.spot);
+				if (refresh) uniforms.set("u_Spot", lights.spot);
 				if (lights.spotShadowNum > 0) {
-					uniforms.set("u_SpotShadow", lights.spotShadow);
+					if (refresh) uniforms.set("u_SpotShadow", lights.spotShadow);
 					if (uniforms.has("spotShadowMap")) {
 						if (this.capabilities.version >= 2 && !disableShadowSampler) {
 							uniforms.set("spotShadowMap", lights.spotShadowDepthMap, textures);
